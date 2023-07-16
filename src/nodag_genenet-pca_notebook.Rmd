@@ -1,11 +1,11 @@
 ---
-title: "NoDag"
+title: "NoDag and GeneNet PCA"
 output:
-  pdf_document: default
   html_notebook: default
+  pdf_document: default
 ---
 
-This notebook aims to explore the potential applications of [NoDag](https://doi.org/10.48550/arXiv.2006.03005).
+This notebook aims to explore the potential applications of [NoDag](https://doi.org/10.48550/arXiv.2006.03005) and [GeneNet PCA](https://CRAN.R-project.org/package=GeneNet).
 
 ## Setup
 ```{r}
@@ -17,6 +17,7 @@ install.packages(c("psych","lavaan"), dependencies=TRUE)
 remotes::install_github('rlebron-bioinfo/gnlearn')
 install.packages("mice")
 install.packages("ggplot2")
+install.packages("GeneNet")
 ```
 
 ```{r}
@@ -27,7 +28,7 @@ library(psych)
 library(lavaan)
 library(gnlearn)
 library(mice)
-library(ggplot2)
+library(GeneNet)
 ```
 
 ```{r}
@@ -141,8 +142,6 @@ ko_imputed <- ko
 # Perform mean imputation on the columns with missing values
 ko_imputed$resorp <- ifelse(is.na(ko$resorp), mean(ko$resorp, na.rm = TRUE), ko$resorp)
 ko_imputed$form <- ifelse(is.na(ko$form), mean(ko$form, na.rm = TRUE), ko$form)
-
-summary(ko_imputed)
 ```
 
 ### Turner GLDS-30
@@ -173,6 +172,10 @@ glds <- glds[,c("expose","mass","mass_meta","mass_epiph","trab_meta","trab_epiph
 rm(list=c("mass","trab_epiph","trab_meta"))
 ```
 
+```{r}
+glds
+```
+
 ### Turner LSDS-30
 ```{r}
 turner <- read.csv(turner_lsds30_path, header=T, stringsAsFactors=F)
@@ -197,23 +200,141 @@ rm(list=c("form","resorp"))
 # Call nodag on dfs
 alwood_dag <- nodag(alwood)
 ko_dag <- nodag(ko_imputed)
-glds_dag <- nodag(turner)
+glds_dag <- nodag(glds)
 turner_dag <- nodag(turner)
 
 # Plot DAGs
-png('../dags/alwood_dag.png', width=12, height=12, units="cm", res=300)
+png('../dags/nodag/alwood_nodag.png', width=12, height=12, units="cm", res=300)
 plot(alwood_dag)
-title("Alwood DAG (NoDag)")
+title("Alwood (NoDag)")
 
-png('../dags/ko_dag.png', width=12, height=12, units="cm", res=300)
+png('../dags/nodag/ko_nodag.png', width=12, height=12, units="cm", res=300)
 plot(ko_dag)
-title("Ko DAG (NoDag)")
+title("Ko (NoDag)")
 
-png('../dags/turner_glds_dag.png', width=12, height=12, units="cm", res=300)
+png('../dags/nodag/turner_glds_nodag.png', width=12, height=12, units="cm", res=300)
 plot(glds_dag)
-title("Turner GLDS-351 DAG (NoDag)")
+title("Turner GLDS-351 (NoDag)")
 
-png('../dags/turner_lsds_dag.png', width=12, height=12, units="cm", res=300)
+png('../dags/nodag/turner_lsds_nodag.png', width=12, height=12, units="cm", res=300)
 plot(turner_dag)
-title("Turner LSDS-30 DAG (NoDag)")
+title("Turner LSDS-30 (NoDag)")
+```
+
+## GeneNet PCA
+
+```{r}
+# Set global node and edge attributes:
+globalAttrs <- list()
+globalAttrs$edge <- list(color = "black", lty = "solid", lwd = 1, arrowsize = 1, arrowhead = "normal")
+
+# Set edge attributes:
+edi = edge.info(gr) # edge directions and correlations
+edgeAttrs = list()
+edgeAttrs$dir =  edi$dir # set edge directions 
+cutoff = quantile(abs(edi$weight), c(0.2, 0.8)) # thresholds for line width / coloring
+edgeAttrs$lty = ifelse(edi$weight < 0, "dotted", "solid") # negative correlation
+edgeAttrs$color = ifelse( abs(edi$weight <= cutoff[1]), "grey", "black") # lower 20% quantile
+edgeAttrs$lwd = ifelse(abs(edi$weight >= cutoff[2]), 2, 1) # upper 20% quantile
+```
+
+### Alwood
+```{r}
+# Estimate partial correlation matrix
+inferred.pcor <- ggm.estimate.pcor(alwood)
+
+# Compute p-values, q-values, and posterior probabilities for each potential edge
+test.results <- network.test.edges(inferred.pcor)
+
+# Extract a network containing edges with a probability > 0.9 (local FDR < 0.1)
+net <- extract.network(test.results, cutoff.ggm = 0.9)
+
+# Get the column names of the network as node labels
+node.labels <- colnames(alwood)
+
+# Create a graph object using the network and node labels
+gr <- network.make.graph(net, node.labels, drop.singles = TRUE)
+
+# Plot the graph
+png('../dags/genenet_pca/alwood_genenet_pca.png', width=12, height=12, units="cm", res=300)
+plot(gr, attrs = globalAttrs, edgeAttrs = edgeAttrs, "fdp")
+title("Alwood (GeneNet PCA)")
+```
+
+### Ko
+```{r}
+# Estimate partial correlation matrix
+inferred.pcor <- ggm.estimate.pcor(ko_imputed)
+
+# Compute p-values, q-values, and posterior probabilities for each potential edge
+test.results <- network.test.edges(inferred.pcor)
+
+# Extract a network containing edges with a probability > 0.9 (local FDR < 0.1)
+net <- extract.network(test.results, cutoff.ggm = 0.9)
+
+# Get the column names of the network as node labels
+node.labels <- colnames(ko_imputed)
+
+# Create a graph object using the network and node labels
+gr <- network.make.graph(net, node.labels, drop.singles = TRUE)
+
+# Plot the graph
+png('../dags/genenet_pca/ko_genenet_pca.png', width=12, height=12, units="cm", res=300)
+plot(gr, attrs = globalAttrs, edgeAttrs = edgeAttrs, "fdp")
+title("Ko (GeneNet PCA)")
+```
+
+### Turner GLDS-351
+```{r}
+# Estimate partial correlation matrix
+inferred.pcor <- ggm.estimate.pcor(glds)
+# Result: Estimating optimal shrinkage intensity lambda (correlation matrix): 0.0719 
+
+# Compute p-values, q-values, and posterior probabilities for each potential edge
+test.results <- network.test.edges(inferred.pcor)
+# test.results[1:20,]
+# Result: prob col was all 0s
+
+# Extract a network containing edges with a probability > 0.9 (local FDR < 0.1)
+net <- extract.network(test.results)#, cutoff.ggm = 0.9)
+# Result:
+# Significant edges:  0 
+#    Corresponding to  0 %  of possible edges 
+
+# Get the column names of the network as node labels
+node.labels <- colnames(glds)
+
+# Create a graph object using the network and node labels
+gr <- network.make.graph(net, node.labels, drop.singles = TRUE)
+# Result:
+# Error in .local(object, from, to, ...) :
+#   unknown nodes in 'from': ‘NA’, ‘NA’
+
+# Plot the graph
+png('../dags/genenet_pca/turner_glds_genenet_pca.png', width=12, height=12, units="cm", res=300)
+plot(gr, attrs = globalAttrs, edgeAttrs = edgeAttrs, "fdp")
+title("Turner GLDS-351 (GeneNet PCA)")
+```
+
+### Turner LSDS-30
+```{r}
+# Estimate partial correlation matrix
+inferred.pcor <- ggm.estimate.pcor(turner)
+
+# Compute p-values, q-values, and posterior probabilities for each potential edge
+test.results <- network.test.edges(inferred.pcor)
+
+# Extract a network containing edges with a probability > 0.9 (local FDR < 0.1)
+net <- extract.network(test.results, cutoff.ggm = 0.9)
+
+# Get the column names of the network as node labels
+node.labels <- colnames(turner)
+
+# Create a graph object using the network and node labels
+gr <- network.make.graph(net, node.labels, drop.singles = TRUE)
+
+# Plot the graph
+png('../dags/genenet_pca/turner_lsds_genenet_pca.png', width=12, height=12, units="cm", res=300)
+plot(gr, attrs = globalAttrs, edgeAttrs = edgeAttrs, "fdp")
+title("Turner LSDS-30 (GeneNet PCA)")
 ```
