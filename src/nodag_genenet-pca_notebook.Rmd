@@ -13,11 +13,12 @@ This notebook aims to explore the potential applications of [NoDag](https://doi.
 install.packages("bnlearn")
 install.packages("BiocManager")
 BiocManager::install("Rgraphviz")
-install.packages(c("psych","lavaan"), dependencies=TRUE)
-remotes::install_github('rlebron-bioinfo/gnlearn')
+install.packages(c("psych", "lavaan"), dependencies = TRUE)
+remotes::install_github("rlebron-bioinfo/gnlearn")
 install.packages("mice")
 install.packages("ggplot2")
 install.packages("GeneNet")
+install.packages("igraph", dependencies = TRUE)
 ```
 
 ```{r}
@@ -29,6 +30,7 @@ library(lavaan)
 library(gnlearn)
 library(mice)
 library(GeneNet)
+library(igraph)
 ```
 
 ```{r}
@@ -49,43 +51,43 @@ turner_lsds30_path <- paste0(data_path, "LSDS-30_histomorphometry_turnerTRANSFOR
 
 ### Alwood LSDS-15
 ```{r}
-alwood <- read.csv(alwood_lsds15_path, header=T, stringsAsFactors=F)
-alwood <- alwood[11:37,c(3:6,9)]
-  alwood$expose <- ifelse(alwood$Factor.Value=="Flight",1,0)
-  names(alwood)[2:5] <- c("thick","sep","num","bvtv")
+alwood <- read.csv(alwood_lsds15_path, header = T, stringsAsFactors = F)
+alwood <- alwood[11:37, c(3:6, 9)]
+alwood$expose <- ifelse(alwood$Factor.Value == "Flight", 1, 0)
+names(alwood)[2:5] <- c("thick", "sep", "num", "bvtv")
 
-trab <- pca(r=alwood[,c("sep","num")],nfactors=1,scores = T)
-mass <- pca(r=alwood[,c("thick","bvtv")],nfactors=1,scores=T)
+trab <- pca(r = alwood[, c("sep", "num")], nfactors = 1, scores = T)
+mass <- pca(r = alwood[, c("thick", "bvtv")], nfactors = 1, scores = T)
 
 alwood$trab <- as.vector(trab$scores)
 alwood$mass <- as.vector(mass$scores)
 
-alwood <- alwood[,c("expose","trab","mass")]
+alwood <- alwood[, c("expose", "trab", "mass")]
 
-rm(list=c("trab","mass"))
+rm(list = c("trab", "mass"))
 ```
 
 ### Ko LSDS-40 and LSDS-451
 ```{r}
-nastring <- c("           *","epiphysis broken")  # things we want R to read as NA
+nastring <- c("           *", "epiphysis broken") # things we want R to read as NA
 
 # Read raw files
-ko1 <- read.csv(ko_lsds40_biomech_path, header=T, stringsAsFactors=F) 
-ko2 <- read.csv(ko_lsds40_histo_path, header=T, stringsAsFactors=F,na.strings=nastring)
-ko3 <- read.csv(ko_lsds40_microct_path, header=T, stringsAsFactors=F,na.strings=nastring)
-ko4 <- read.csv(ko_lsds451_path, header=T, stringsAsFactors=F)
+ko1 <- read.csv(ko_lsds40_biomech_path, header = T, stringsAsFactors = F)
+ko2 <- read.csv(ko_lsds40_histo_path, header = T, stringsAsFactors = F, na.strings = nastring)
+ko3 <- read.csv(ko_lsds40_microct_path, header = T, stringsAsFactors = F, na.strings = nastring)
+ko4 <- read.csv(ko_lsds451_path, header = T, stringsAsFactors = F)
 
 # Subest to needed columns/rows
-ko1 <- ko1[,c(1,3:4,8:10)]
-ko2 <- ko2[!(is.na(ko2$Source.Name)),c(1,7:11)]
-ko3 <- ko3[,c(1,10,13:17)]
-ko4 <- ko4[,c(1,4:7)]
+ko1 <- ko1[, c(1, 3:4, 8:10)]
+ko2 <- ko2[!(is.na(ko2$Source.Name)), c(1, 7:11)]
+ko3 <- ko3[, c(1, 10, 13:17)]
+ko4 <- ko4[, c(1, 4:7)]
 
 # Rename columns
-names(ko1) <- c("ID","PWB","duration","stiffness","load.max","load.fail")
-names(ko2) <- c("ID","OBSBS","OCSBS",'MSBS',"MAR","BFRBS")
-names(ko3) <- c("ID","BVTV","trab.num","trab.thick","trab.sep","BMD","cort.thick")
-names(ko4) <- c("ID","BMD0","BMD1","BMD2","BMD4")
+names(ko1) <- c("ID", "PWB", "duration", "stiffness", "load.max", "load.fail")
+names(ko2) <- c("ID", "OBSBS", "OCSBS", "MSBS", "MAR", "BFRBS")
+names(ko3) <- c("ID", "BVTV", "trab.num", "trab.thick", "trab.sep", "BMD", "cort.thick")
+names(ko4) <- c("ID", "BMD0", "BMD1", "BMD2", "BMD4")
 
 # create indicators of source file
 ko1$k1 <- 1
@@ -94,21 +96,21 @@ ko3$k3 <- 1
 ko4$k4 <- 1
 
 # Merge files
-ko12   <- merge(ko1,ko2,by="ID",all.x=T,all.y=T)
-ko123  <- merge(ko12,ko3,by="ID",all=T)
-ko1234 <- merge(ko123,ko4,by="ID",all=T) 
+ko12 <- merge(ko1, ko2, by = "ID", all.x = T, all.y = T)
+ko123 <- merge(ko12, ko3, by = "ID", all = T)
+ko1234 <- merge(ko123, ko4, by = "ID", all = T)
 
 # Fill in missing indicators with 0
-ko1234$k1[is.na(ko12$k1)] <-0
-ko1234$k2[is.na(ko12$k2)] <-0
-ko1234$k3[is.na(ko12$k3)] <-0
-ko1234$k4[is.na(ko12$k4)] <-0
+ko1234$k1[is.na(ko12$k1)] <- 0
+ko1234$k2[is.na(ko12$k2)] <- 0
+ko1234$k3[is.na(ko12$k3)] <- 0
+ko1234$k4[is.na(ko12$k4)] <- 0
 
 # Keep only needed rows
-ko <- ko1234[!(is.na(ko1234$stiffness)),]
-  ko$unload    <- 0*(ko$PWB=='PWB100')+30*(ko$PWB=="PWB70")+60*(ko$PWB=="PWB40")+80*(ko$PWB =="PWB20")
-  ko$dur   <- 7*(ko$duration=='1wk')+14*(ko$duration=='2wk')+28*(ko$duration=='4wk')
-ko <- ko[,c('BVTV','BMD','trab.sep','trab.num','MSBS','OCSBS','BFRBS','load.max','load.fail','unload','dur')]
+ko <- ko1234[!(is.na(ko1234$stiffness)), ]
+ko$unload <- 0 * (ko$PWB == "PWB100") + 30 * (ko$PWB == "PWB70") + 60 * (ko$PWB == "PWB40") + 80 * (ko$PWB == "PWB20")
+ko$dur <- 7 * (ko$duration == "1wk") + 14 * (ko$duration == "2wk") + 28 * (ko$duration == "4wk")
+ko <- ko[, c("BVTV", "BMD", "trab.sep", "trab.num", "MSBS", "OCSBS", "BFRBS", "load.max", "load.fail", "unload", "dur")]
 
 # Convert to numeric
 ko$BVTV <- as.numeric(ko$BVTV)
@@ -118,21 +120,21 @@ ko$trab.num <- as.numeric(ko$trab.num)
 ko$MSBS <- as.numeric(ko$MSBS)
 ko$BFRBS <- as.numeric(ko$BFRBS)
 
-mass <- pca(r=ko[,c("BVTV","BMD")], nfactors = 1, scores = T)
-trab <- pca(r=ko[,c("trab.sep","trab.num")], nfactors = 1, scores = T)
-form   <- pca(r=ko[,c("MSBS","BFRBS")], nfactors = 1, scores = T)
-stren <- pca(r=ko[,c("load.max","load.fail")], nfactors = 1, scores = T)
+mass <- pca(r = ko[, c("BVTV", "BMD")], nfactors = 1, scores = T)
+trab <- pca(r = ko[, c("trab.sep", "trab.num")], nfactors = 1, scores = T)
+form <- pca(r = ko[, c("MSBS", "BFRBS")], nfactors = 1, scores = T)
+stren <- pca(r = ko[, c("load.max", "load.fail")], nfactors = 1, scores = T)
 
-ko$mass <- as.vector(mass$scores[,1])
-ko$trab <- as.vector(trab$scores[,1])
-ko$stren <- as.vector(stren$scores[,1])
-ko$expose <- ((ko$unload*ko$dur)-mean(ko$unload*ko$dur))/(sd(ko$unload*ko$dur))
+ko$mass <- as.vector(mass$scores[, 1])
+ko$trab <- as.vector(trab$scores[, 1])
+ko$stren <- as.vector(stren$scores[, 1])
+ko$expose <- ((ko$unload * ko$dur) - mean(ko$unload * ko$dur)) / (sd(ko$unload * ko$dur))
 ko$resorp <- scale(ko$OCSBS)
-ko$form   <- as.vector(form$scores)
+ko$form <- as.vector(form$scores)
 
-ko <- ko[,c("unload","dur","expose","mass","trab","stren","resorp","form")]
+ko <- ko[, c("unload", "dur", "expose", "mass", "trab", "stren", "resorp", "form")]
 
-rm(list=c("mass","trab","form","stren"))
+rm(list = c("mass", "trab", "form", "stren"))
 ```
 
 ```{r}
@@ -146,14 +148,14 @@ ko_imputed$form <- ifelse(is.na(ko$form), mean(ko$form, na.rm = TRUE), ko$form)
 
 ### Turner GLDS-30
 ```{r}
-glds <- read.csv(turner_glds351_path, header=T, stringsAsFactors=F)
-glds$expose <- ifelse(glds$Teatment=="Ground Control",0,1)
-glds<- glds[7:30,c(5:7,11,13,16:19,22:25)]  
+glds <- read.csv(turner_glds351_path, header = T, stringsAsFactors = F)
+glds$expose <- ifelse(glds$Teatment == "Ground Control", 0, 1)
+glds <- glds[7:30, c(5:7, 11, 13, 16:19, 22:25)]
 
 # Make component variables
-mass      <- pca(r=glds[,c("DXA_BMC_mg","DXA_BMD_mg_per_mmsq")],nfactors=1,scores = T)
-trab_meta <- pca(r=glds[,c("metaphysis_canc_Tb_Sp_micrometer","metaphysis_canc_Tb_N_1per_mm")],nfactors=1,scores = T)
-trab_epiph <- pca(r=glds[,c("epiphysis_canc_Tb_Sp_micrometer","epiphysis_canc_Tb_N_1per_mm")],nfactors=1,scores = T)
+mass <- pca(r = glds[, c("DXA_BMC_mg", "DXA_BMD_mg_per_mmsq")], nfactors = 1, scores = T)
+trab_meta <- pca(r = glds[, c("metaphysis_canc_Tb_Sp_micrometer", "metaphysis_canc_Tb_N_1per_mm")], nfactors = 1, scores = T)
+trab_epiph <- pca(r = glds[, c("epiphysis_canc_Tb_Sp_micrometer", "epiphysis_canc_Tb_N_1per_mm")], nfactors = 1, scores = T)
 
 glds$mass <- as.vector(mass$scores)
 glds$trab_meta <- as.vector(trab_meta$scores)
@@ -167,32 +169,28 @@ names(glds)[9] <- "mass_epiph"
 glds$mass_epiph <- scale(glds$mass_epiph)
 
 # Final dataset
-glds <- glds[,c("expose","mass","mass_meta","mass_epiph","trab_meta","trab_epiph")]
+glds <- glds[, c("expose", "mass", "mass_meta", "mass_epiph", "trab_meta", "trab_epiph")]
 
-rm(list=c("mass","trab_epiph","trab_meta"))
-```
-
-```{r}
-glds
+rm(list = c("mass", "trab_epiph", "trab_meta"))
 ```
 
 ### Turner LSDS-30
 ```{r}
-turner <- read.csv(turner_lsds30_path, header=T, stringsAsFactors=F)
-turner <- turner[,c(1,3:9)] 
-  turner$expose <- ifelse(turner$Spaceflight=="Space Flight",1,0)
-  names(turner)[3:8] <- c("mass","labellength","cont_bf","ceased_bf","MAR","osteoc_per") 
-  
+turner <- read.csv(turner_lsds30_path, header = T, stringsAsFactors = F)
+turner <- turner[, c(1, 3:9)]
+turner$expose <- ifelse(turner$Spaceflight == "Space Flight", 1, 0)
+names(turner)[3:8] <- c("mass", "labellength", "cont_bf", "ceased_bf", "MAR", "osteoc_per")
+
 # Create measures
-resorp <- pca(r=turner[,c("labellength","osteoc_per")],nfactors=1,scores=T)
-form   <- pca(r=turner[,c("ceased_bf","MAR")],nfactors=1,scores=T)
-  
+resorp <- pca(r = turner[, c("labellength", "osteoc_per")], nfactors = 1, scores = T)
+form <- pca(r = turner[, c("ceased_bf", "MAR")], nfactors = 1, scores = T)
+
 turner$resorp <- as.vector(resorp$scores)
-turner$form   <- as.vector(form$scores)*-1  ## form loads "backwards"; multiply by -1 to fix
-turner$mass   <- scale(turner$mass)
-  
-turner <- turner[,c(9,3,10:11)]
-rm(list=c("form","resorp"))
+turner$form <- as.vector(form$scores) * -1 ## form loads "backwards"; multiply by -1 to fix
+turner$mass <- scale(turner$mass)
+
+turner <- turner[, c(9, 3, 10:11)]
+rm(list = c("form", "resorp"))
 ```
 
 ## NoDag
@@ -204,21 +202,107 @@ glds_dag <- nodag(glds)
 turner_dag <- nodag(turner)
 
 # Plot DAGs
-png('../dags/nodag/alwood_nodag.png', width=12, height=12, units="cm", res=300)
+png("../dags/nodag/alwood_nodag.png", width = 12, height = 12, units = "cm", res = 300)
 plot(alwood_dag)
 title("Alwood (NoDag)")
 
-png('../dags/nodag/ko_nodag.png', width=12, height=12, units="cm", res=300)
+png("../dags/nodag/ko_nodag.png", width = 12, height = 12, units = "cm", res = 300)
 plot(ko_dag)
 title("Ko (NoDag)")
 
-png('../dags/nodag/turner_glds_nodag.png', width=12, height=12, units="cm", res=300)
+png("../dags/nodag/turner_glds_nodag.png", width = 12, height = 12, units = "cm", res = 300)
 plot(glds_dag)
 title("Turner GLDS-351 (NoDag)")
 
-png('../dags/nodag/turner_lsds_nodag.png', width=12, height=12, units="cm", res=300)
+png("../dags/nodag/turner_lsds_nodag.png", width = 12, height = 12, units = "cm", res = 300)
 plot(turner_dag)
 title("Turner LSDS-30 (NoDag)")
+```
+
+## NoDag bnlearn::cextend
+
+### alwood_dag bnlearn::cextend
+```{r}
+# Get the names of the nodes from the igraph graph
+node_names <- V(alwood_dag)$name
+
+# Create an empty bn object with nodes
+bn_graph <- empty.graph(node_names)
+
+# Convert igraph edges to bnlearn edges
+edges <- as.matrix(get.edgelist(alwood_dag))
+for (i in 1:nrow(edges)) {
+  from_node <- edges[i, 1]
+  to_node <- edges[i, 2]
+  bn_graph <- set.arc(bn_graph, from = from_node, to = to_node)
+}
+
+alwood_dag_cextend <- cextend(bn_graph)
+plot(alwood_dag_cextend)
+title("Alwood (NoDag cextend)")
+```
+
+### ko_dag bnlearn::cextend
+```{r}
+# Get the names of the nodes from the igraph graph
+node_names <- V(ko_dag)$name
+
+# Create an empty bn object with nodes
+bn_graph <- empty.graph(node_names)
+
+# Convert igraph edges to bnlearn edges
+edges <- as.matrix(get.edgelist(ko_dag))
+for (i in 1:nrow(edges)) {
+  from_node <- edges[i, 1]
+  to_node <- edges[i, 2]
+  bn_graph <- set.arc(bn_graph, from = from_node, to = to_node)
+}
+
+ko_dag_cextend <- cextend(bn_graph)
+plot(ko_dag_cextend)
+title("Ko (NoDag cextend)")
+```
+
+### glds_dag bnlearn::cextend
+```{r}
+# Get the names of the nodes from the igraph graph
+node_names <- V(glds_dag)$name
+
+# Create an empty bn object with nodes
+bn_graph <- empty.graph(node_names)
+
+# Convert igraph edges to bnlearn edges
+edges <- as.matrix(get.edgelist(glds_dag))
+for (i in 1:nrow(edges)) {
+  from_node <- edges[i, 1]
+  to_node <- edges[i, 2]
+  bn_graph <- set.arc(bn_graph, from = from_node, to = to_node)
+}
+
+glds_dag_cextend <- cextend(bn_graph)
+plot(glds_dag_cextend)
+title("Turner GLDS-30 (NoDag cextend)")
+```
+
+### turner_dag bnlearn::cextend
+```{r}
+# Get the names of the nodes from the igraph graph
+node_names <- V(turner_dag)$name
+
+# Create an empty bn object with nodes
+bn_graph <- empty.graph(node_names)
+
+# Convert igraph edges to bnlearn edges
+edges <- as.matrix(get.edgelist(turner_dag))
+for (i in 1:nrow(edges)) {
+  from_node <- edges[i, 1]
+  to_node <- edges[i, 2]
+  bn_graph <- set.arc(bn_graph, from = from_node, to = to_node)
+}
+
+turner_dag_cextend <- cextend(bn_graph)
+plot(turner_dag_cextend)
+title("Turner LSDS-30 (NoDag cextend)")
 ```
 
 ## GeneNet PCA
@@ -229,13 +313,13 @@ globalAttrs <- list()
 globalAttrs$edge <- list(color = "black", lty = "solid", lwd = 1, arrowsize = 1, arrowhead = "normal")
 
 # Set edge attributes:
-edi = edge.info(gr) # edge directions and correlations
-edgeAttrs = list()
-edgeAttrs$dir =  edi$dir # set edge directions 
-cutoff = quantile(abs(edi$weight), c(0.2, 0.8)) # thresholds for line width / coloring
-edgeAttrs$lty = ifelse(edi$weight < 0, "dotted", "solid") # negative correlation
-edgeAttrs$color = ifelse( abs(edi$weight <= cutoff[1]), "grey", "black") # lower 20% quantile
-edgeAttrs$lwd = ifelse(abs(edi$weight >= cutoff[2]), 2, 1) # upper 20% quantile
+edi <- edge.info(gr) # edge directions and correlations
+edgeAttrs <- list()
+edgeAttrs$dir <- edi$dir # set edge directions
+cutoff <- quantile(abs(edi$weight), c(0.2, 0.8)) # thresholds for line width / coloring
+edgeAttrs$lty <- ifelse(edi$weight < 0, "dotted", "solid") # negative correlation
+edgeAttrs$color <- ifelse(abs(edi$weight <= cutoff[1]), "grey", "black") # lower 20% quantile
+edgeAttrs$lwd <- ifelse(abs(edi$weight >= cutoff[2]), 2, 1) # upper 20% quantile
 ```
 
 ### Alwood
@@ -256,7 +340,7 @@ node.labels <- colnames(alwood)
 gr <- network.make.graph(net, node.labels, drop.singles = TRUE)
 
 # Plot the graph
-png('../dags/genenet_pca/alwood_genenet_pca.png', width=12, height=12, units="cm", res=300)
+png("../dags/genenet_pca/alwood_genenet_pca.png", width = 12, height = 12, units = "cm", res = 300)
 plot(gr, attrs = globalAttrs, edgeAttrs = edgeAttrs, "fdp")
 title("Alwood (GeneNet PCA)")
 ```
@@ -279,7 +363,7 @@ node.labels <- colnames(ko_imputed)
 gr <- network.make.graph(net, node.labels, drop.singles = TRUE)
 
 # Plot the graph
-png('../dags/genenet_pca/ko_genenet_pca.png', width=12, height=12, units="cm", res=300)
+png("../dags/genenet_pca/ko_genenet_pca.png", width = 12, height = 12, units = "cm", res = 300)
 plot(gr, attrs = globalAttrs, edgeAttrs = edgeAttrs, "fdp")
 title("Ko (GeneNet PCA)")
 ```
@@ -288,7 +372,7 @@ title("Ko (GeneNet PCA)")
 ```{r}
 # Estimate partial correlation matrix
 inferred.pcor <- ggm.estimate.pcor(glds)
-# Result: Estimating optimal shrinkage intensity lambda (correlation matrix): 0.0719 
+# Result: Estimating optimal shrinkage intensity lambda (correlation matrix): 0.0719
 
 # Compute p-values, q-values, and posterior probabilities for each potential edge
 test.results <- network.test.edges(inferred.pcor)
@@ -296,10 +380,10 @@ test.results <- network.test.edges(inferred.pcor)
 # Result: prob col was all 0s
 
 # Extract a network containing edges with a probability > 0.9 (local FDR < 0.1)
-net <- extract.network(test.results)#, cutoff.ggm = 0.9)
+net <- extract.network(test.results) # , cutoff.ggm = 0.9)
 # Result:
-# Significant edges:  0 
-#    Corresponding to  0 %  of possible edges 
+# Significant edges:  0
+#    Corresponding to  0 %  of possible edges
 
 # Get the column names of the network as node labels
 node.labels <- colnames(glds)
@@ -311,7 +395,7 @@ gr <- network.make.graph(net, node.labels, drop.singles = TRUE)
 #   unknown nodes in 'from': ‘NA’, ‘NA’
 
 # Plot the graph
-png('../dags/genenet_pca/turner_glds_genenet_pca.png', width=12, height=12, units="cm", res=300)
+png("../dags/genenet_pca/turner_glds_genenet_pca.png", width = 12, height = 12, units = "cm", res = 300)
 plot(gr, attrs = globalAttrs, edgeAttrs = edgeAttrs, "fdp")
 title("Turner GLDS-351 (GeneNet PCA)")
 ```
@@ -334,7 +418,7 @@ node.labels <- colnames(turner)
 gr <- network.make.graph(net, node.labels, drop.singles = TRUE)
 
 # Plot the graph
-png('../dags/genenet_pca/turner_lsds_genenet_pca.png', width=12, height=12, units="cm", res=300)
+png("../dags/genenet_pca/turner_lsds_genenet_pca.png", width = 12, height = 12, units = "cm", res = 300)
 plot(gr, attrs = globalAttrs, edgeAttrs = edgeAttrs, "fdp")
 title("Turner LSDS-30 (GeneNet PCA)")
 ```
