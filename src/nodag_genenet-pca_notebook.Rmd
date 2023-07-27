@@ -10,15 +10,15 @@ This notebook aims to explore the potential applications of [NoDag](https://doi.
 ## Setup
 ```{r}
 # Install packages
-install.packages("bnlearn")
-install.packages("BiocManager")
-BiocManager::install("Rgraphviz")
-install.packages(c("psych", "lavaan"), dependencies = TRUE)
-remotes::install_github("rlebron-bioinfo/gnlearn")
-install.packages("mice")
-install.packages("ggplot2")
-install.packages("GeneNet")
-install.packages("igraph", dependencies = TRUE)
+# install.packages("bnlearn")
+# install.packages("BiocManager")
+# BiocManager::install("Rgraphviz")
+# install.packages(c("psych", "lavaan"), dependencies = TRUE)
+# remotes::install_github("rlebron-bioinfo/gnlearn")
+# install.packages("mice")
+# install.packages("ggplot2")
+# install.packages("GeneNet")
+# install.packages("igraph", dependencies = TRUE)
 ```
 
 ```{r}
@@ -35,7 +35,7 @@ library(igraph)
 
 ```{r}
 # Set data file paths
-setwd("../")
+# setwd("../")
 data_path <- paste0(getwd(), "/data/")
 
 alwood_lsds15_path <- paste0(data_path, "LSDS-15_microCT_alwoodTRANSFORMED.csv")
@@ -113,12 +113,11 @@ ko$dur <- 7 * (ko$duration == "1wk") + 14 * (ko$duration == "2wk") + 28 * (ko$du
 ko <- ko[, c("BVTV", "BMD", "trab.sep", "trab.num", "MSBS", "OCSBS", "BFRBS", "load.max", "load.fail", "unload", "dur")]
 
 # Convert to numeric
-ko$BVTV <- as.numeric(ko$BVTV)
-ko$BMD <- as.numeric(ko$BMD)
-ko$trab.sep <- as.numeric(ko$trab.sep)
-ko$trab.num <- as.numeric(ko$trab.num)
-ko$MSBS <- as.numeric(ko$MSBS)
-ko$BFRBS <- as.numeric(ko$BFRBS)
+ko <- as.data.frame(sapply(ko, as.numeric))
+
+# Subset to data from 4 week duration and either 0%, 60%, or 80% unloaded
+ko <- ko[ko$dur == 28, ]
+ko <- ko[ko$unload %in% c(0, 60, 80), ]
 
 mass <- pca(r = ko[, c("BVTV", "BMD")], nfactors = 1, scores = T)
 trab <- pca(r = ko[, c("trab.sep", "trab.num")], nfactors = 1, scores = T)
@@ -132,7 +131,7 @@ ko$expose <- ((ko$unload * ko$dur) - mean(ko$unload * ko$dur)) / (sd(ko$unload *
 ko$resorp <- scale(ko$OCSBS)
 ko$form <- as.vector(form$scores)
 
-ko <- ko[, c("unload", "dur", "expose", "mass", "trab", "stren", "resorp", "form")]
+ko <- ko[, c("expose", "mass", "trab", "stren", "resorp", "form")]
 
 rm(list = c("mass", "trab", "form", "stren"))
 ```
@@ -145,6 +144,7 @@ ko_imputed <- ko
 ko_imputed$resorp <- ifelse(is.na(ko$resorp), mean(ko$resorp, na.rm = TRUE), ko$resorp)
 ko_imputed$form <- ifelse(is.na(ko$form), mean(ko$form, na.rm = TRUE), ko$form)
 ```
+
 
 ### Turner GLDS-30
 ```{r}
@@ -172,6 +172,14 @@ glds$mass_epiph <- scale(glds$mass_epiph)
 glds <- glds[, c("expose", "mass", "mass_meta", "mass_epiph", "trab_meta", "trab_epiph")]
 
 rm(list = c("mass", "trab_epiph", "trab_meta"))
+```
+
+```{r}
+# Subset data to only expose, mass, mass_meta, and trab_meta
+glds_meta <- glds[, c("expose", "mass", "mass_meta", "trab_meta")]
+
+# Subset data to only expose, mass, mass_epiph, and trab_epiph
+glds_epiph <- glds[, c("expose", "mass", "mass_epiph", "trab_epiph")]
 ```
 
 ### Turner LSDS-30
@@ -202,19 +210,27 @@ glds_dag <- nodag(glds)
 turner_dag <- nodag(turner)
 
 # Plot DAGs
-png("../dags/nodag/alwood_nodag.png", width = 12, height = 12, units = "cm", res = 300)
+# png("../dags/nodag/alwood_nodag.png", width = 12, height = 12, units = "cm", res = 300)
 plot(alwood_dag)
 title("Alwood (NoDag)")
 
-png("../dags/nodag/ko_nodag.png", width = 12, height = 12, units = "cm", res = 300)
+# png("../dags/nodag/ko_nodag.png", width = 12, height = 12, units = "cm", res = 300)
 plot(ko_dag)
 title("Ko (NoDag)")
 
-png("../dags/nodag/turner_glds_nodag.png", width = 12, height = 12, units = "cm", res = 300)
+# png("../dags/nodag/turner_glds_nodag.png", width = 12, height = 12, units = "cm", res = 300)
 plot(glds_dag)
 title("Turner GLDS-351 (NoDag)")
 
-png("../dags/nodag/turner_lsds_nodag.png", width = 12, height = 12, units = "cm", res = 300)
+glds_meta_dag <- nodag(glds_meta)
+plot(glds_meta_dag)
+title("Turner GLDS-351 Meta (NoDag)")
+
+glds_epiph_dag <- nodag(glds_epiph)
+plot(glds_epiph_dag)
+title("Turner GLDS-351 Epiph (NoDag)")
+
+# png("../dags/nodag/turner_lsds_nodag.png", width = 12, height = 12, units = "cm", res = 300)
 plot(turner_dag)
 title("Turner LSDS-30 (NoDag)")
 ```
