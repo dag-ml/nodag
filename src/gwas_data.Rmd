@@ -1,0 +1,300 @@
+---
+title: "GLDS-366 GWAS Processed Associations"
+output:
+  html_notebook: default
+  pdf_document: default
+---
+
+## Setup 
+
+```{r}
+# install.packages(c("systemfonts", "textshaping", "ragg"))
+# install.packages("tidyverse")
+```
+
+```{r}
+library(tidyverse)
+library(tidyr)
+library(dplyr)
+library(stringr)
+library(bnlearn)
+library(Rgraphviz)
+library(psych)
+library(lavaan)
+library(gnlearn)
+library(mice)
+library(GeneNet)
+library(igraph)
+```
+
+```{r}
+# Set data file paths
+data_path <- paste0(getwd(), "/new_data/")
+
+glds_366_gwas_path <- paste0(data_path, "GLDS-366_GWAS_processed_associations.csv")
+```
+
+```{r}
+gwas <- read.csv(glds_366_gwas_path, header = T, stringsAsFactors = F)
+
+numeric_cols <- gwas[sapply(gwas, is.numeric)]
+non_numeric_cols <- gwas[sapply(gwas, function(x) !is.numeric(x))]
+```
+
+## Data Exploration
+```{r}
+str(gwas)
+head(gwas)
+summary(gwas)
+
+missings <- sapply(gwas, function(x) sum(is.na(x)))
+print(missings)
+
+num_of_cols <- length(numeric_cols)
+
+# Adjust grid based on number of numeric columns
+par(mfrow = c(ceiling(sqrt(num_of_cols)), ceiling(sqrt(num_of_cols))))
+
+# Histograms for numeric columns
+for (col in names(numeric_cols)) {
+  hist(numeric_cols[[col]], main = col, xlab = col, col = "lightblue", border = "black")
+}
+
+# Resetting graphical parameters for boxplots
+par(mfrow = c(ceiling(sqrt(num_of_cols)), ceiling(sqrt(num_of_cols))))
+
+# Boxplots for numeric columns
+for (col in names(numeric_cols)) {
+  boxplot(numeric_cols[[col]], main = col, col = "lightblue", border = "black")
+}
+
+if (length(numeric_cols) > 0) {
+  cat("The following columns are numeric:\n")
+  print(names(numeric_cols))
+}
+
+# Non-numeric columns
+if (length(non_numeric_cols) > 0) {
+  cat("The following columns are non-numeric:\n")
+  print(names(non_numeric_cols))
+}
+```
+
+```{r}
+range_values <- range(non_numeric_cols$"Bgd_X.ray_8")
+range_values # NA NA
+
+range_values <- range(non_numeric_cols$"FociPerGy_X.ray_8")
+range_values # NA NA
+
+range_values <- range(non_numeric_cols$"chromosome")
+range_values # 1 Y
+
+unique_values <- unique(non_numeric_cols$"chromosome")
+unique_values # "1"  "2"  "3"  "4"  "5"  "6"  "7"  "8"  "9"  "10" "11" "12" "13" "14" "15" "16" "17" "18" "19" "M"  "X"  "Y"
+```
+
+```{r}
+head(gwas)
+
+numeric_cols_clean_comb_all <- numeric_cols_clean_comb
+numeric_cols_clean_comb_all$position.b38 <- gwas$position.b38
+
+numeric_cols_clean_comb_all$chromosomePosition <- paste(numeric_cols_clean_comb_all$chromosome, "-", numeric_cols_clean_comb_all$position.b38, sep = "")
+
+head(numeric_cols_clean_comb_all$chromosomePosition)
+sum(table(numeric_cols_clean_comb_all$chromosomePosition) == 1)
+dim(numeric_cols_clean_comb_all)
+x <- table(numeric_cols_clean_comb_all$chromosomePosition)
+
+x[x > 1]
+```
+
+## Data Preprocessing
+```{r}
+char_to_numer <- function(x) {
+  if (x == "M") {
+    return(20)
+  } else if (x == "X") {
+    return(21)
+  } else if (x == "Y") {
+    return(22)
+  } else {
+    return(as.numeric(x))
+  }
+}
+
+numeric_cols$chromosome <- sapply(non_numeric_cols$"chromosome", char_to_numer)
+
+range_values <- range(numeric_cols$chromosome)
+range_values # 1 22
+
+head(numeric_cols)
+```
+
+### All Numerical
+```{r}
+# Delete any rows with NA values
+numeric_cols_clean <- drop_na(numeric_cols)
+head(numeric_cols_clean)
+dim(numeric_cols) # 134593     61
+dim(numeric_cols_clean) # 56191    62
+```
+
+### Subset by n_#
+```{r}
+# Subset by n_#
+suffixes <- c("n_4", "n_8", "n_24", "n_48")
+df_list <- list()
+
+# Loop through each suffix to create the dataframes
+for (suffix in suffixes) {
+  df_list[[suffix]] <- numeric_cols_clean %>%
+    select(ends_with(c(suffix, paste0(suffix, ".1"))))
+}
+
+# Access each dataframe by using the suffixes
+numeric_cols_clean_n4 <- df_list[["n_4"]]
+numeric_cols_clean_n8 <- df_list[["n_8"]]
+numeric_cols_clean_n24 <- df_list[["n_24"]]
+numeric_cols_clean_n48 <- df_list[["n_48"]]
+
+head(numeric_cols_clean_comb_n4)
+```
+
+### Subset by n_# & combined with and without .1
+```{r}
+# Average columns with the same name but with or without the .1 suffix
+# Extract column names that end with .1
+cols_with_dot <- grep("\\.1$", names(numeric_cols_clean), value = TRUE)
+
+# Extract the corresponding original column names (without .1)
+original_cols <- sub("\\.1$", "", cols_with_dot)
+
+numeric_cols_clean_comb <- numeric_cols_clean
+
+# For each base column name, average with its .1 counterpart
+for (col in original_cols) {
+  if (col %in% names(numeric_cols_clean_comb) && paste0(col, ".1") %in% names(numeric_cols_clean_comb)) {
+    numeric_cols_clean_comb[[col]] <- rowMeans(numeric_cols_clean_comb[, c(col, paste0(col, ".1"))], na.rm = TRUE)
+  }
+}
+
+# Drop columns with .1 suffix
+numeric_cols_clean_comb <- numeric_cols_clean %>% select(-ends_with(".1"))
+
+head(numeric_cols_clean_comb)
+
+# Subset by n_#
+suffixes <- c("n_4", "n_8", "n_24", "n_48")
+df_list <- list()
+
+for (suffix in suffixes) {
+  df_list[[suffix]] <- numeric_cols_clean_comb %>%
+    select(ends_with(c(suffix, paste0(suffix, ".1"))))
+}
+
+numeric_cols_clean_comb_n4 <- df_list[["n_4"]]
+numeric_cols_clean_comb_n8 <- df_list[["n_8"]]
+numeric_cols_clean_comb_n24 <- df_list[["n_24"]]
+numeric_cols_clean_comb_n48 <- df_list[["n_48"]]
+
+head(numeric_cols_clean_comb_n4)
+```
+
+### Subset by prefix of Bgd or FociPerGy & combined with and without .1
+```{r}
+# Combine dfs with averaged columns
+complete_numeric_clean_comb_df <- bind_cols(df_list)
+head(complete_numeric_clean_comb_df)
+
+# Subset by prefix of Bgd or FociPerGy
+prefixes <- c("Bgd", "FociPerGy")
+df_list <- list()
+
+# Loop through each prefix to create the dataframes
+for (prefix in prefixes) {
+  df_list[[prefix]] <- complete_numeric_clean_comb_df %>%
+    select(starts_with(prefix))
+  head(df_list[[prefix]])
+}
+
+# Access each dataframe by using the prefixes
+complete_numeric_clean_comb_bgd <- df_list[["Bgd"]]
+head(complete_numeric_clean_comb_bgd)
+
+complete_numeric_clean_comb_foci <- df_list[["FociPerGy"]]
+head(complete_numeric_clean_comb_foci)
+```
+
+### Subset by prefix of Bgd or FociPerGy & combined with and without .1 plus chromosome
+```{r}
+# Combine dfs with averaged columns
+complete_numeric_clean_comb_bgd_chromosome <- complete_numeric_clean_comb_bgd
+complete_numeric_clean_comb_bgd_chromosome$chromosome <- numeric_cols_clean$chromosome
+
+head(complete_numeric_clean_comb_bgd_chromosome)
+
+complete_numeric_clean_comb_foci_chromosome <- complete_numeric_clean_comb_foci
+complete_numeric_clean_comb_foci_chromosome$chromosome <- numeric_cols_clean$chromosome
+
+head(complete_numeric_clean_comb_foci_chromosome)
+```
+
+## NoDag
+
+### Numerical Columns - All
+```{r}
+head(cor(numeric_cols_clean))
+
+gwas_numer_dag <- nodag(numeric_cols_clean)
+plot(gwas_numer_dag)
+```
+
+### Numerical Columns - Subset by n_#
+```{r}
+gwas_numer_n4_dag <- nodag(numeric_cols_clean_n4)
+plot(gwas_numer_n4_dag)
+
+gwas_numer_n8_dag <- nodag(numeric_cols_clean_n8)
+plot(gwas_numer_n8_dag)
+
+gwas_numer_n24_dag <- nodag(numeric_cols_clean_n24)
+plot(gwas_numer_n24_dag)
+
+gwas_numer_n48_dag <- nodag(numeric_cols_clean_n48)
+plot(gwas_numer_n48_dag)
+```
+
+### Numerical Columns - Subset by n_# & combined with and without .1
+```{r}
+gwas_numer_n4_comb_dag <- nodag(numeric_cols_clean_comb_n4)
+plot(gwas_numer_n4_comb_dag)
+
+gwas_numer_n8_comb_dag <- nodag(numeric_cols_clean_comb_n8)
+plot(gwas_numer_n8_comb_dag)
+
+gwas_numer_n24_comb_dag <- nodag(numeric_cols_clean_comb_n24)
+plot(gwas_numer_n24_comb_dag)
+
+gwas_numer_n48_comb_dag <- nodag(numeric_cols_clean_comb_n48)
+plot(gwas_numer_n48_comb_dag)
+```
+
+### Numerical Columns - Subset by prefix of Bgd or FociPerGy & combined with and without .1
+```{r}
+gwas_all_numer_comb_bgd_dag <- nodag(complete_numeric_clean_comb_bgd)
+plot(gwas_all_numer_comb_bgd_dag)
+
+gwas_all_numer_comb_foci_dag <- nodag(complete_numeric_clean_comb_foci)
+plot(gwas_all_numer_comb_foci_dag)
+```
+
+### Subset by prefix of Bgd or FociPerGy & combined with and without .1 plus chromosome
+```{r}
+complete_numeric_clean_comb_bgd_chromosome_dag <- nodag(complete_numeric_clean_comb_bgd_chromosome)
+plot(complete_numeric_clean_comb_bgd_chromosome_dag)
+
+complete_numeric_clean_comb_foci_chromosome_dag <- nodag(complete_numeric_clean_comb_foci_chromosome)
+plot(complete_numeric_clean_comb_foci_chromosome_dag)
+```
