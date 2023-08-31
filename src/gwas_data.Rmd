@@ -29,7 +29,7 @@ library(igraph)
 
 ```{r}
 # Set data file paths
-data_path <- paste0(getwd(), "/new_data/")
+data_path <- paste0(getwd(), "/data/")
 
 glds_366_gwas_path <- paste0(data_path, "GLDS-366_GWAS_processed_associations.csv")
 ```

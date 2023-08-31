@@ -1,0 +1,64 @@
+---
+title: "GLDS-366 GWAS Processed Associations"
+output:
+  html_notebook: default
+  pdf_document: default
+---
+
+## Setup 
+
+```{r}
+library(bnlearn)
+library(Rgraphviz)
+library(psych)
+library(lavaan)
+library(gnlearn)
+library(igraph)
+```
+
+```{r}
+# Read data
+data_path <- paste0(getwd(), "/data/processed/")
+
+gwas_clean_path <- paste0(data_path, "gwas_df_clean.csv")
+gwas <- read.csv(gwas_clean_path, header = T, stringsAsFactors = F)
+
+gwas_clean_transposed_path <- paste0(data_path, "gwas_df_clean_transposed.csv")
+gwas_transposed <- read.csv(gwas_clean_transposed_path, header = T, stringsAsFactors = F)
+```
+
+```{r}
+dim(gwas) # 56191    61
+dim(gwas_transposed) # 60    56191
+```
+
+## Algorithm: NoDAG
+
+### Original
+
+```{r}
+# Subset random sample of columns
+set.seed(42)
+selected_cols <- sample(names(gwas), 10)
+gwas_subset <- gwas[, selected_cols]
+```
+
+```{r}
+# Error: 'x' must be numeric
+gwas_dag <- nodag(gwas_subset)
+plot(gwas_dag)
+```
+
+### Transposed
+
+```{r}
+# Subset random sample of columns
+set.seed(42)
+selected_cols <- sample(names(gwas_transposed), 10)
+gwas_transposed_subset <- gwas_transposed[, selected_cols]
+```
+
+```{r}
+gwas_transposed_dag <- nodag(gwas_transposed_subset)
+plot(gwas_transposed_dag)
+```
