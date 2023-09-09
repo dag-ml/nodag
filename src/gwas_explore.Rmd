@@ -14,6 +14,9 @@ library(psych)
 library(lavaan)
 library(gnlearn)
 library(igraph)
+library(dplyr)
+library(mltools)
+library(data.table)
 ```
 
 ```{r}
@@ -25,11 +28,15 @@ gwas <- read.csv(gwas_clean_path, header = T, stringsAsFactors = F)
 
 gwas_clean_transposed_path <- paste0(data_path, "gwas_df_clean_transposed.csv")
 gwas_transposed <- read.csv(gwas_clean_transposed_path, header = T, stringsAsFactors = F)
+
+gwas_clean_hot_path <- paste0(data_path, "gwas_df_clean_hot.csv")
+gwas_hot <- read.csv(gwas_clean_hot_path, header = T, stringsAsFactors = F)
 ```
 
 ```{r}
 dim(gwas) # 56191    61
 dim(gwas_transposed) # 60    56191
+dim(gwas_hot) # 56191    83
 ```
 
 ## Algorithm: NoDAG
@@ -61,4 +68,149 @@ gwas_transposed_subset <- gwas_transposed[, selected_cols]
 ```{r}
 gwas_transposed_dag <- nodag(gwas_transposed_subset)
 plot(gwas_transposed_dag)
+```
+
+### One Hot Encoded Chromosome
+
+```{r}
+# Combine cols ending with and without .1
+gwas_hot_cols_dot <- grep("\\.1$", names(gwas_hot), value = TRUE)
+
+gwas_hot_orig_cols <- sub("\\.1$", "", gwas_hot_cols_dot)
+
+gwas_hot_clean <- gwas_hot
+
+for (col in original_cols) {
+  if (col %in% names(gwas_hot_clean) && paste0(col, ".1") %in% names(gwas_hot_clean)) {
+    gwas_hot_clean[[col]] <- rowMeans(gwas_hot_clean[, c(col, paste0(col, ".1"))], na.rm = TRUE)
+  }
+}
+
+gwas_hot_clean <- gwas_hot_clean %>% select(-ends_with(".1"))
+
+head(gwas_hot_clean)
+```
+
+```{r}
+# Subset by number of hours post exposure
+suffixes <- c("n_4", "n_8", "n_24", "n_48")
+df_list <- list()
+
+for (suffix in suffixes) {
+  df_list[[suffix]] <- gwas_hot_clean %>%
+    select(ends_with(c(suffix, paste0(suffix, ".1"))))
+}
+
+gwas_hot_n4 <- df_list[["n_4"]]
+gwas_hot_n8 <- df_list[["n_8"]]
+gwas_hot_n24 <- df_list[["n_24"]]
+gwas_hot_n48 <- df_list[["n_48"]]
+
+head(gwas_hot_n24)
+```
+
+```{r}
+# Subset by Bgd or FociPerGy
+prefixes <- c("Bgd", "FociPerGy")
+df_list <- list()
+
+# Loop through each prefix to create the dataframes
+for (prefix in prefixes) {
+  df_list[[prefix]] <- gwas_hot_n24 %>%
+    select(starts_with(prefix))
+  head(df_list[[prefix]])
+}
+
+# gwas_hot_n24_bgd <- df_list[["Bgd"]]
+gwas_hot_n24_foci <- df_list[["FociPerGy"]]
+
+colnames(gwas_hot_n24_foci)
+# "FociPerGy_Si.350.MeV.n_24" "FociPerGy_Ar.350.MeV.n_24"
+# "FociPerGy_Fe.600.MeV.n_24"
+
+head(gwas_hot_n24_foci)
+
+head(gwas_hot)
+```
+
+```{r}
+# Combine subset columns with chromosome_position and
+# chromosome one hot encoding columns
+gwas_orig_subset <- gwas_hot[, c(paste0("X", as.character(1:22)))]
+
+gwas_hot_n24_foci_comb <- cbind(gwas_orig_subset, gwas_hot_n24_foci)
+
+head(gwas_hot_n24_foci_comb)
+```
+
+```{r}
+# Convert all values to numeric
+gwas_hot_n24_foci_comb <- gwas_hot_n24_foci_comb %>% mutate_all(as.numeric)
+
+head(gwas_hot_n24_foci_comb)
+```
+
+```{r}
+gwas_hot_dag <- nodag(gwas_hot_n24_foci_comb)
+plot(gwas_hot_dag)
+```
+
+#### One Hot Encoded Chromosome: All
+
+```{r}
+gwas_hot_clean <- gwas_hot_clean %>%
+  select(-chromosome_position)
+
+gwas_hot_clean <- gwas_hot_clean %>% mutate_all(as.numeric)
+
+head(gwas_hot_clean)
+```
+
+```{r}
+gwas_hot_clean_dag <- nodag(gwas_hot_clean)
+plot(gwas_hot_clean_dag)
+```
+
+#### One Hot Encoded Chromosome: BGD
+
+```{r}
+# Subset by Bgd
+# Loop through each prefix to create the dataframes
+gwas_hot_clean_bgd <- gwas_hot_n24 %>%
+  select(starts_with("BGD"))
+
+gwas_orig_subset <- gwas_hot[, c(paste0("X", as.character(1:22)))]
+
+gwas_hot_clean_bgd_comb <- cbind(gwas_orig_subset, gwas_hot_clean_bgd)
+
+gwas_hot_clean_bgd_comb <- gwas_hot_clean_bgd_comb %>% mutate_all(as.numeric)
+
+head(gwas_hot_clean_bgd_comb)
+```
+
+```{r}
+gwas_hot_clean_bgd_dag <- nodag(gwas_hot_clean_bgd_comb)
+plot(gwas_hot_clean_bgd_dag)
+```
+
+#### One Hot Encoded Chromosome: FociPerGy
+
+```{r}
+# Subset by FociPerGy
+# Loop through each prefix to create the dataframes
+gwas_hot_clean_foci <- gwas_hot_n24 %>%
+  select(starts_with("FociPerGy"))
+
+gwas_orig_subset <- gwas_hot[, c(paste0("X", as.character(1:22)))]
+
+gwas_hot_clean_foci_comb <- cbind(gwas_orig_subset, gwas_hot_clean_foci)
+
+gwas_hot_clean_foci_comb <- gwas_hot_clean_foci_comb %>% mutate_all(as.numeric)
+
+head(gwas_hot_clean_foci_comb)
+```
+
+```{r}
+gwas_hot_clean_foci_dag <- nodag(gwas_hot_clean_foci_comb)
+plot(gwas_hot_clean_foci_dag)
 ```
