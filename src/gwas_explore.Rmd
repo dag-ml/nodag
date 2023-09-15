@@ -17,6 +17,7 @@ library(igraph)
 library(dplyr)
 library(mltools)
 library(data.table)
+library(GeneNet)
 ```
 
 ```{r}
@@ -29,6 +30,12 @@ gwas <- read.csv(gwas_clean_path, header = T, stringsAsFactors = F)
 gwas_clean_transposed_path <- paste0(data_path, "gwas_df_clean_transposed.csv")
 gwas_transposed <- read.csv(gwas_clean_transposed_path, header = T, stringsAsFactors = F)
 
+gwas_clean_transposed_subset_10_path <- paste0(data_path, "gwas_transposed_subset_10.csv")
+gwas_transposed_subset_10 <- read.csv(gwas_clean_transposed_subset_10_path, header = T, stringsAsFactors = F)
+
+gwas_clean_transposed_subset_100_path <- paste0(data_path, "gwas_transposed_subset_100.csv")
+gwas_transposed_subset_100 <- read.csv(gwas_clean_transposed_subset_100_path, header = T, stringsAsFactors = F)
+
 gwas_clean_hot_path <- paste0(data_path, "gwas_df_clean_hot.csv")
 gwas_hot <- read.csv(gwas_clean_hot_path, header = T, stringsAsFactors = F)
 ```
@@ -36,6 +43,8 @@ gwas_hot <- read.csv(gwas_clean_hot_path, header = T, stringsAsFactors = F)
 ```{r}
 dim(gwas) # 56191    61
 dim(gwas_transposed) # 60    56191
+dim(gwas_transposed_subset_10) # 10    40
+dim(gwas_transposed_subset_100) # 10    130
 dim(gwas_hot) # 56191    83
 ```
 
@@ -68,6 +77,94 @@ gwas_transposed_subset <- gwas_transposed[, selected_cols]
 ```{r}
 gwas_transposed_dag <- nodag(gwas_transposed_subset)
 plot(gwas_transposed_dag)
+```
+
+#### Transposed Subset with One Hot Encoded Chromosome_Position
+
+```{r}
+head(gwas_transposed_subset_10)
+
+gwas_transposed_subset_10_dag <- nodag(gwas_transposed_subset_10)
+plot(gwas_transposed_subset_10_dag)
+```
+
+```{r}
+gwas_transposed_subset_100_dag <- nodag(gwas_transposed_subset_100)
+plot(gwas_transposed_subset_100_dag)
+```
+
+```{r}
+# Get the names of the nodes from the igraph graph
+node_names <- V(gwas_transposed_subset_10_dag)$name
+
+# Convert igraph edges to bnlearn edges
+edges <- as.matrix(get.edgelist(gwas_transposed_subset_10_dag))
+
+# Create an igraph object using the edges
+graph <- graph_from_edgelist(edges, directed = TRUE)
+
+# Set node labels
+V(graph)$name <- node_names
+
+# Compute indegree for every node
+in_degrees <- degree(graph, mode = "in")
+
+# Compute the outdegree for every node
+out_degrees <- degree(graph, mode = "out")
+
+# Combine the results into a data frame
+gwas_t10_dag_summary <- data.frame(
+  Node = names(in_degrees),
+  InDegree = in_degrees,
+  OutDegree = out_degrees
+)
+
+gwas_t10_dag_summary_sort_in <- gwas_t10_dag_summary[order(-gwas_t10_dag_summary$InDegree), ]
+
+print(head(gwas_t10_dag_summary_sort_in))
+write.csv(gwas_t10_dag_summary_sort_in, file = "gwas_t10_dag_summary_sort_in.csv", row.names = FALSE)
+
+gwas_t10_dag_summary_sort_out <- gwas_t10_dag_summary[order(-gwas_t10_dag_summary$OutDegree), ]
+
+head(gwas_t10_dag_summary_sort_out)
+write.csv(gwas_t10_dag_summary_sort_out, file = "gwas_t10_dag_summary_sort_out.csv", row.names = FALSE)
+```
+
+```{r}
+# Get the names of the nodes from the igraph graph
+node_names <- V(gwas_transposed_subset_100_dag)$name
+
+# Convert igraph edges to bnlearn edges
+edges <- as.matrix(get.edgelist(gwas_transposed_subset_100_dag))
+
+# Create an igraph object using the edges
+graph <- graph_from_edgelist(edges, directed = TRUE)
+
+# Set node labels
+V(graph)$name <- node_names
+
+# Compute indegree for every node
+in_degrees <- degree(graph, mode = "in")
+
+# Compute the outdegree for every node
+out_degrees <- degree(graph, mode = "out")
+
+# Combine the results into a data frame
+gwas_t100_dag_summary <- data.frame(
+  Node = names(in_degrees),
+  InDegree = in_degrees,
+  OutDegree = out_degrees
+)
+
+gwas_t100_dag_summary_sort_in <- gwas_t100_dag_summary[order(-gwas_t100_dag_summary$InDegree), ]
+
+print(head(gwas_t100_dag_summary_sort_in))
+write.csv(gwas_t100_dag_summary_sort_in, file = "gwas_t100_dag_summary_sort_in.csv", row.names = FALSE)
+
+gwas_t100_dag_summary_sort_out <- gwas_t100_dag_summary[order(-gwas_t100_dag_summary$OutDegree), ]
+
+head(gwas_t100_dag_summary_sort_out)
+write.csv(gwas_t100_dag_summary_sort_out, file = "gwas_t100_dag_summary_sort_out.csv", row.names = FALSE)
 ```
 
 ### One Hot Encoded Chromosome
@@ -213,4 +310,158 @@ head(gwas_hot_clean_foci_comb)
 ```{r}
 gwas_hot_clean_foci_dag <- nodag(gwas_hot_clean_foci_comb)
 plot(gwas_hot_clean_foci_dag)
+```
+
+## Algorithm: GeneNet PCA (https://CRAN.R-project.org/package=GeneNet)
+
+### Transposed Subset with One Hot Encoded Chromosome_Position
+
+```{r}
+# Set global node and edge attributes:
+globalAttrs <- list()
+globalAttrs$edge <- list(color = "black", lty = "solid", lwd = 1, arrowsize = 1, arrowhead = "normal")
+
+# Set edge attributes:
+edi <- edge.info(gr) # edge directions and correlations
+edgeAttrs <- list()
+edgeAttrs$dir <- edi$dir # set edge directions
+cutoff <- quantile(abs(edi$weight), c(0.2, 0.8)) # thresholds for line width / coloring
+edgeAttrs$lty <- ifelse(edi$weight < 0, "dotted", "solid") # negative correlation
+edgeAttrs$color <- ifelse(abs(edi$weight <= cutoff[1]), "grey", "black") # lower 20% quantile
+edgeAttrs$lwd <- ifelse(abs(edi$weight >= cutoff[2]), 2, 1) # upper 20% quantile
+
+par(bg = "white")
+```
+
+```{r}
+# Subset 10
+
+# Estimate partial correlation matrix
+inferred.pcor <- ggm.estimate.pcor(gwas_transposed_subset_10)
+# Estimating optimal shrinkage intensity lambda (correlation matrix): 0.7942
+
+# Compute p-values, q-values, and posterior probabilities for each potential edge
+test.results <- network.test.edges(inferred.pcor)
+# Estimate (local) false discovery rates (partial correlations):
+# Step 1... determine cutoff point
+# Step 2... estimate parameters of null distribution and eta0
+# Step 3... compute p-values and estimate empirical PDF/CDF
+# Step 4... compute q-values and local fdr
+# Step 5... prepare for plotting
+
+# Extract a network containing edges with a probability > 0.5 (local FDR < 0.5)
+net <- extract.network(test.results, cutoff.ggm = 0.)
+# Significant edges:  0
+#     Corresponding to  0 %  of possible edges
+
+# Get the column names of the network as node labels
+node.labels <- colnames(gwas_transposed_subset_10)
+
+# Create a graph object using the network and node labels
+gr <- network.make.graph(net, node.labels, drop.singles = TRUE)
+
+# Error in .local(object, from, to, ...) :
+#   unknown nodes in 'from': ‘NA’, ‘NA’
+
+# Plot the graph
+png(filename = "gwas_network_transposed_subset_10.png", width = 5000, height = 5000, res = 600)
+plot(gr, attrs = globalAttrs, edgeAttrs = edgeAttrs, "fdp", bg = "white")
+dev.off()
+```
+
+```{r}
+# Subset 100
+
+# Estimate partial correlation matrix
+inferred.pcor <- ggm.estimate.pcor(gwas_transposed_subset_100)
+# Estimating optimal shrinkage intensity lambda (correlation matrix): 0.7576
+
+# Compute p-values, q-values, and posterior probabilities for each potential edge
+test.results <- network.test.edges(inferred.pcor)
+# Estimate (local) false discovery rates (partial correlations):
+# Step 1... determine cutoff point
+# Step 2... estimate parameters of null distribution and eta0
+# Step 3... compute p-values and estimate empirical PDF/CDF
+# Step 4... compute q-values and local fdr
+# Step 5... prepare for plotting
+
+# Extract a network containing edges with a probability > 0.5 (local FDR < 0.5)
+net <- extract.network(test.results, cutoff.ggm = 0.5)
+# Significant edges:  2181
+#     Corresponding to  26.01 %  of possible edges
+
+# Get the column names of the network as node labels
+node.labels <- colnames(gwas_transposed_subset_100)
+
+# Create a graph object using the network and node labels
+gr_100 <- network.make.graph(net, node.labels, drop.singles = TRUE)
+
+# Plot the graph
+png(filename = "gwas_network_transposed_subset_100.png", width = 20000, height = 20000, res = 2000)
+plot(gr_100, attrs = globalAttrs, edgeAttrs = edgeAttrs, "fdp", bg = "white")
+dev.off()
+```
+
+### Explore subset 100 network
+```{r}
+# Get degree of each node
+
+# Extract adjacency matrix from network obj
+adj_matrix <- as(gr_100, "matrix")
+
+# Compute degree of each node
+node_degrees <- rowSums(adj_matrix != 0)
+
+# Convert to a df
+degree_df <- data.frame(Node = unique(rownames(adj_matrix)))
+degree_df$Degree <- sapply(degree_df$Node, function(node_name) sum(node_degrees[rownames(adj_matrix) == node_name]))
+
+degree_df
+```
+
+```{r}
+# Count the number of chromosome nodes connected to each node
+degree_df$Num_Chromosome_Nodes <- apply(adj_matrix, 1, function(row) {
+  sum(startsWith(names(row[row != 0]), "X"))
+})
+
+# Count the number of nonchromosome nodes connected to each node
+degree_df$Num_Nonchromosome_Nodes <- apply(adj_matrix, 1, function(row) {
+  sum(startsWith(names(row[row != 0]), "Bgd") | startsWith(names(row[row != 0]), "FociPerGy"))
+})
+
+# Identify chromosome nodes associated with each node
+degree_df$Chromosome_Nodes <- apply(adj_matrix, 1, function(row) {
+  conn_nodes <- names(row[row != 0])
+  chr_nodes <- conn_nodes[startsWith(conn_nodes, "X")]
+  return(paste(chr_nodes, collapse = ", "))
+})
+
+# Identify non-chromosome nodes associated with each node
+degree_df$Nonchromosome_Nodes <- apply(adj_matrix, 1, function(row) {
+  conn_nodes <- names(row[row != 0])
+  non_chr_nodes <- conn_nodes[startsWith(conn_nodes, "Bgd") | startsWith(conn_nodes, "FociPerGy")]
+  return(paste(non_chr_nodes, collapse = ", "))
+})
+
+# Identify non-chromosome nodes NOT associated with each node
+degree_df$Unconnected_Nonchromosome_Nodes <- apply(adj_matrix, 1, function(row) {
+  conn_nodes <- names(row[row != 0])
+  conn_non_chr_nodes <- conn_nodes[startsWith(conn_nodes, "Bgd") | startsWith(conn_nodes, "FociPerGy")]
+  all_non_chr_nodes <- rownames(adj_matrix)[startsWith(rownames(adj_matrix), "Bgd") | startsWith(rownames(adj_matrix), "FociPerGy")]
+  unconnected_non_chr_nodes <- setdiff(all_non_chr_nodes, conn_non_chr_nodes)
+  return(paste(unconnected_non_chr_nodes, collapse = ", "))
+})
+
+head(degree_df)
+```
+
+```{r}
+# Rows starting with "Bgd" or "FociPerGy"
+bgd_foci_df <- degree_df[grepl("^(Bgd|FociPerGy)", degree_df$Node), ]
+write.csv(bgd_foci_df, "bgd_foci_df.csv", row.names = FALSE)
+
+# Rows starting with "X"
+chromosome_df <- degree_df[grepl("^X", degree_df$Node), ]
+write.csv(chromosome_df, "chromosome_df.csv", row.names = FALSE)
 ```
