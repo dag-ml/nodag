@@ -1,5 +1,5 @@
 ---
-title: "NoDag Algorithm Final Testing"
+title: "NODAG Algorithm Final Testing"
 output:
   html_notebook: default
   pdf_document: default

@@ -1,11 +1,11 @@
 ---
-title: "NoDag"
+title: "NODAG"
 output:
   html_notebook: default
   pdf_document: default
 ---
 
-This notebook aims to explore the potential applications of [NoDag](https://doi.org/10.48550/arXiv.2006.03005).
+This notebook aims to explore the potential applications of [NODAG](https://doi.org/10.48550/arXiv.2006.03005).
 
 ## Setup
 ```{r}
